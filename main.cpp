@@ -53,22 +53,22 @@ struct maxAFunc : public Xbyak::CodeGenerator {
     printf("AVX2 not detected!\n");
   }
 
-  mov (rcx,rdx);	
+  mov (rcx,rdx);    
   push(rbx);
   shr (rcx,3);  // Divide by 8 (eight floats)
   shl (rdx,2);  // num of Output elements * size of float (4)
   shl (rcx,5);  // Trunc to 32 bytes 
 
 
-	// Compute partial maximums
+    // Compute partial maximums
   vpbroadcastd(ymm0,ptr [rsi]);
-  xor(rax,rax);				// Move offset for next 8 floating point values
+  xor(rax,rax);             // Move offset for next 8 floating point values
   L("for_i");
     cmp(rax,rcx);
     jz("tail");
     vmovaps(ymm1,ptr [rsi + rax]);  // A
-		add(rax,32);				// Move offset for next 8 floating point values
-		vmaxps(ymm0,ymm0,ymm1);
+        add(rax,32);                // Move offset for next 8 floating point values
+        vmaxps(ymm0,ymm0,ymm1);
     jmp("for_i");
   // Tail execution
   L("tail");
@@ -76,21 +76,21 @@ struct maxAFunc : public Xbyak::CodeGenerator {
     cmp(rdx,16);  
     jb("seq");
     vmovaps(xmm2,ptr [rsi + rax]);  // A
-		add(rax,16);				// Move offset for next 4 floating point values
+        add(rax,16);                // Move offset for next 4 floating point values
     sub(rdx,16);
-		vperm2f128(ymm2,ymm2,ymm2,0);
-		vmaxps(ymm0,ymm0,ymm2);  //partial maxes in ymm0
+        vperm2f128(ymm2,ymm2,ymm2,0);
+        vmaxps(ymm0,ymm0,ymm2);  //partial maxes in ymm0
   L("seq");
-	  cmp(rdx,0);
-    jz("done");	
-		vpbroadcastd(ymm2,ptr [rsi + rax]);
-		vmaxps(ymm0,ymm0,ymm2);  //partial maxes in ymm0
+      cmp(rdx,0);
+    jz("done"); 
+        vpbroadcastd(ymm2,ptr [rsi + rax]);
+        vmaxps(ymm0,ymm0,ymm2);  //partial maxes in ymm0
     sub(rdx,4);
     add(rax,4);
     jmp("seq");
   L("done");
   // Get within shortlisted buffer maximum
-	vperm2f128(ymm1,ymm0,ymm0,1);
+    vperm2f128(ymm1,ymm0,ymm0,1);
   vmaxps(ymm0,ymm0,ymm1);  //partial maxes in ymm0
   vpermilps(xmm1,xmm0,0x1B);
   vmaxps(ymm0,ymm0,ymm1);  //partial maxes in ymm0
@@ -126,22 +126,22 @@ struct maxUFunc : public Xbyak::CodeGenerator {
     printf("AVX2 not detected!\n");
   }
 
-  mov (rcx,rdx);	
+  mov (rcx,rdx);    
   push(rbx);
   shr (rcx,3);  // Divide by 8 (eight floats)
   shl (rdx,2);  // num of Output elements * size of float (4)
   shl (rcx,5);  // Trunc to 32 bytes 
 
 
-	// Compute partial maximums
+    // Compute partial maximums
   vpbroadcastd(ymm0,ptr [rsi]);
-  xor(rax,rax);				// Move offset for next 8 floating point values
+  xor(rax,rax);             // Move offset for next 8 floating point values
   L("for_i");
     cmp(rax,rcx);
     jz("tail");
     vmovups(ymm1,ptr [rsi + rax]);  // A
-		add(rax,32);				// Move offset for next 8 floating point values
-		vmaxps(ymm0,ymm0,ymm1);
+        add(rax,32);                // Move offset for next 8 floating point values
+        vmaxps(ymm0,ymm0,ymm1);
     jmp("for_i");
   // Tail execution
   L("tail");
@@ -149,21 +149,105 @@ struct maxUFunc : public Xbyak::CodeGenerator {
     cmp(rdx,16);  
     jb("seq");
     vmovups(xmm2,ptr [rsi + rax]);  // A
-		add(rax,16);				// Move offset for next 4 floating point values
+        add(rax,16);                // Move offset for next 4 floating point values
     sub(rdx,16);
-		vperm2f128(ymm2,ymm2,ymm2,0);
-		vmaxps(ymm0,ymm0,ymm2);  //partial maxes in ymm0
+        vperm2f128(ymm2,ymm2,ymm2,0);
+        vmaxps(ymm0,ymm0,ymm2);  //partial maxes in ymm0
   L("seq");
-	  cmp(rdx,0);
-    jz("done");	
-		vpbroadcastd(ymm2,ptr [rsi + rax]);
-		vmaxps(ymm0,ymm0,ymm2);  //partial maxes in ymm0
+      cmp(rdx,0);
+    jz("done"); 
+        vpbroadcastd(ymm2,ptr [rsi + rax]);
+        vmaxps(ymm0,ymm0,ymm2);  //partial maxes in ymm0
     sub(rdx,4);
     add(rax,4);
     jmp("seq");
   L("done");
   // Get within shortlisted buffer maximum
-	vperm2f128(ymm1,ymm0,ymm0,1);
+    vperm2f128(ymm1,ymm0,ymm0,1);
+  vmaxps(ymm0,ymm0,ymm1);  //partial maxes in ymm0
+  vpermilps(xmm1,xmm0,0x1B);
+  vmaxps(ymm0,ymm0,ymm1);  //partial maxes in ymm0
+  vpermilps(xmm1,xmm0,1);
+  vmaxps(ymm0,ymm0,ymm1);  //ymm0[0:31] contains global maximum
+  vmovss(ptr[rdi],xmm0); // Result <-Max(X[.])
+  pop(rbx);
+
+  printf("Generating Max Value code\n");
+#else
+        printf("32bit not supported\n");
+#endif
+  ret();
+}
+};
+
+struct maxCFunc : public Xbyak::CodeGenerator {
+    maxCFunc()
+{
+#if defined(__x86_64__)
+// calling convention RDI, RSI, RDX, RCX, R8, R9
+// XMM0-7 (ints are passed that way)
+//      RDI - Reference to Result
+//      RSI - PTR to Array
+//      RDX - Num classes 
+
+// Regsters that need to be preserved: RBX,RBP, R12-R15
+
+  Xbyak::util::Cpu current_cpu;
+  if(current_cpu.has(Xbyak::util::Cpu::tAVX2)) {
+    printf("AVX2 supported!\n");
+  } else {
+    printf("AVX2 not detected!\n");
+  }
+
+  mov (rcx,rdx);    
+  push(rbx);
+  shr (rcx,3);  // Divide by 8 (eight floats)
+  shl (rdx,2);  // num of Output elements * size of float (4)
+  shl (rcx,5);  // Trunc to 32 bytes 
+
+
+    // Compute partial maximums
+  vpbroadcastd(ymm0,ptr [rsi]);
+  xor(rax,rax);             // Move offset for next 8 floating point values
+  L("for_i");
+    cmp(rax,rcx); // TODO: move this downwards.
+    jz("tail");
+    vmovups(ymm1,ptr [rsi + rax]);  // A
+        add(rax,32);                // Move offset for next 8 floating point values
+        vmaxps(ymm0,ymm0,ymm1);
+    jmp("for_i");
+  // Tail execution
+  L("tail");
+  vmovups(ymm1, ptr[rsi + rax]);
+  // sub(rdx, rcx); // compute number of remaining bytes
+  sub(rcx, rdx);
+  neg(rcx);
+  shr(rdx, 2); // convert from bytes to number of temaining values
+  mov(rax, 1);
+  shl(rax, cl);
+  dec(rax);
+  vmaskmovps(ymm2, ymm1, eax);
+  vmaxps(ymm0, ymm0, ymm2);
+  // L("tail");
+  //   sub(rdx,rcx);
+  //   cmp(rdx,16);  
+  //   jb("seq");
+  //   vmovups(xmm2,ptr [rsi + rax]);  // A
+  //       add(rax,16);                // Move offset for next 4 floating point values
+  //   sub(rdx,16);
+  //       vperm2f128(ymm2,ymm2,ymm2,0);
+  //       vmaxps(ymm0,ymm0,ymm2);  //partial maxes in ymm0
+  // L("seq");
+  //     cmp(rdx,0);
+  //   jz("done"); 
+  //       vpbroadcastd(ymm2,ptr [rsi + rax]);
+  //       vmaxps(ymm0,ymm0,ymm2);  //partial maxes in ymm0
+  //   sub(rdx,4);
+  //   add(rax,4);
+  //   jmp("seq");
+  L("done");
+  // Get within shortlisted buffer maximum
+    vperm2f128(ymm1,ymm0,ymm0,1);
   vmaxps(ymm0,ymm0,ymm1);  //partial maxes in ymm0
   vpermilps(xmm1,xmm0,0x1B);
   vmaxps(ymm0,ymm0,ymm1);  //partial maxes in ymm0
@@ -188,11 +272,11 @@ void seq_max(float& result, const float* X, int num_classes)
   asm volatile ("BEGIN MAX SEQUENCE! <---");
 # endif
   result = X[0];
-	for (int c=0; c < num_classes; ++c) {
-		if (X[c] > result) {
-			result = X[c];
-		}
-	}
+    for (int c=0; c < num_classes; ++c) {
+        if (X[c] > result) {
+            result = X[c];
+        }
+    }
 # ifdef GENERATE_ASSEMBLY
   asm volatile ("END MAX SEQUENCE! <---");
 # endif
@@ -204,12 +288,12 @@ void simd_max(float& result, const float* X, int num_classes)
   asm volatile ("BEGIN MAX SIMD! <---");
 # endif
   result = X[0];
-	#pragma omp simd reduction(max: result) aligned(X : 32)
-	for (int c=0; c < num_classes; ++c) {
-		if (X[c] > result) {
-			result = X[c];
-		}
-	}
+    #pragma omp simd reduction(max: result) aligned(X : 32)
+    for (int c=0; c < num_classes; ++c) {
+        if (X[c] > result) {
+            result = X[c];
+        }
+    }
 # ifdef GENERATE_ASSEMBLY
   asm volatile ("END MAX SIMD! <---");
 # endif
@@ -387,11 +471,11 @@ void simd2_softmax(const float* X,
 
 bool checkResults(std::vector<float>& results1, std::vector<float>& results2)
 {
-	bool consistency = true;
-	for (int i=0; i<results1.size(); ++i) {
-	 	consistency = consistency && (results1[i] == results2[i]);
-	}
-	return consistency;
+    bool consistency = true;
+    for (int i=0; i<results1.size(); ++i) {
+        consistency = consistency && (results1[i] == results2[i]);
+    }
+    return consistency;
 }
 
 int main(int argc, char** argv)
@@ -467,83 +551,96 @@ int main(int argc, char** argv)
 #endif
 
 
-		// MAX VALUE FINDING
+        // MAX VALUE FINDING
 
-		// First batch is aligned , all others are aligned if channel size is divisible by 4
-		bool run_aligned = (FLAGS_channel_size % 4 == 0) || (FLAGS_batch_size == 1);
+        // First batch is aligned , all others are aligned if channel size is divisible by 4
+        bool run_aligned = (FLAGS_channel_size % 4 == 0) || (FLAGS_batch_size == 1);
 
     // Warmup eg. does not account
     std::vector<float> result1(FLAGS_batch_size);
     std::vector<float> result2(FLAGS_batch_size);
     std::vector<float> result3(FLAGS_batch_size);
     std::vector<float> result4(FLAGS_batch_size);
+    std::vector<float> result5(FLAGS_batch_size);
 
     maxAFunc max_afunc;
     maxUFunc max_ufunc;
-		auto max_akernel = (void (*)(float& result, const float *x, int m))max_afunc.getCode();
-		auto max_ukernel = (void (*)(float& result, const float *x, int m))max_ufunc.getCode();
+    maxCFunc max_cfunc;
+        auto max_akernel = (void (*)(float& result, const float *x, int m))max_afunc.getCode();
+        auto max_ukernel = (void (*)(float& result, const float *x, int m))max_ufunc.getCode();
+        auto max_ckernel = (void (*)(float& result, const float *x, int m))max_cfunc.getCode();
 
     for (int b=0; b< FLAGS_batch_size; ++b) {
-			seq_max(result1[b],&bottom_uns[b*FLAGS_channel_size],FLAGS_channel_size);
-		} 
+            seq_max(result1[b],&bottom_uns[b*FLAGS_channel_size],FLAGS_channel_size);
+        } 
 
     t1 = __rdtsc();
     for (int n=0; n < FLAGS_num_reps; ++n) {
       for (int b=0; b< FLAGS_batch_size; ++b) {
-				simd_max(result2[b],&bottom_uns[b*FLAGS_channel_size],FLAGS_channel_size);
-			} 
+                simd_max(result2[b],&bottom_uns[b*FLAGS_channel_size],FLAGS_channel_size);
+            } 
     }
     auto simd_t = __rdtsc() - t1;
 
     t1 = __rdtsc();
-		if (run_aligned) {
-			for (int n=0; n < FLAGS_num_reps; ++n) {
-				for (int b=0; b< FLAGS_batch_size; ++b) {
-					max_akernel(result3[b],&bottom_uns[b*FLAGS_channel_size],FLAGS_channel_size); 
-				} 
-			}
-		}
+        if (run_aligned) {
+            for (int n=0; n < FLAGS_num_reps; ++n) {
+                for (int b=0; b< FLAGS_batch_size; ++b) {
+                    max_akernel(result3[b],&bottom_uns[b*FLAGS_channel_size],FLAGS_channel_size); 
+                } 
+            }
+        }
     auto asma_t = __rdtsc() - t1;
 
     t1 = __rdtsc();
     for (int n=0; n < FLAGS_num_reps; ++n) {
       for (int b=0; b< FLAGS_batch_size; ++b) {
-				max_ukernel(result4[b],&bottom_uns[b*FLAGS_channel_size],FLAGS_channel_size); 
-			} 
+                max_ukernel(result4[b],&bottom_uns[b*FLAGS_channel_size],FLAGS_channel_size); 
+            } 
     }
     auto asmu_t = __rdtsc() - t1;
 
     t1 = __rdtsc();
     for (int n=0; n < FLAGS_num_reps; ++n) {
       for (int b=0; b< FLAGS_batch_size; ++b) {
-				seq_max(result1[b],&bottom_uns[b*FLAGS_channel_size],FLAGS_channel_size); 
-			} 
+                max_ckernel(result5[b],&bottom_uns[b*FLAGS_channel_size],FLAGS_channel_size); 
+            } 
+    }
+    auto asmc_t = __rdtsc() - t1;
+
+    t1 = __rdtsc();
+    for (int n=0; n < FLAGS_num_reps; ++n) {
+      for (int b=0; b< FLAGS_batch_size; ++b) {
+                seq_max(result1[b],&bottom_uns[b*FLAGS_channel_size],FLAGS_channel_size); 
+            } 
     }
     auto seq_t = __rdtsc() - t1;
 
-		if (checkResults(result1,result2) == false) {
-			std::cout << "Error: Max finding for SIMD is inconsistent with SEQ" << std::endl;
+        if (checkResults(result1,result2) == false) {
+            std::cout << "Error: Max finding for SIMD is inconsistent with SEQ" << std::endl;
       exit(-1);
-		}
-	  if ((run_aligned == true) && (checkResults(result1,result3) == false)) {
-			std::cout << "Error: Max finding for aligned JIT is inconsistent with SEQ" << std::endl;
+        }
+      if ((run_aligned == true) && (checkResults(result1,result3) == false)) {
+            std::cout << "Error: Max finding for aligned JIT is inconsistent with SEQ" << std::endl;
       exit(-1);
-		}
+        }
 
-	  if (checkResults(result1,result4) == false) {
-			std::cout << "Error: Max finding for unaligned JIT is inconsistent with SEQ" << std::endl;
+      if (checkResults(result1,result4) == false) {
+            std::cout << "Error: Max finding for unaligned JIT is inconsistent with SEQ" << std::endl;
       exit(-1);
-		}
+        }
 
     std::cout << "max SEQ is : " << seq_t/((float)2.4*1000000.0) << " ms" << std::endl;
     std::cout << "max SIMD is :" << simd_t/(float)seq_t << " of sequence time" << std::endl;
 
     std::cout << "max unaligned JIT is :" << asmu_t/(float)seq_t << " of sequence time" << std::endl;
-		if (run_aligned)
-			std::cout << "max aligned JIT is :" << asma_t/(float)seq_t << " of sequence time" << std::endl;
+        if (run_aligned)
+            std::cout << "max aligned JIT is :" << asma_t/(float)seq_t << " of sequence time" << std::endl;
+    std::cout << "max combined JIT is :" << asmc_t/(float)seq_t << " of sequence time" << std::endl;
 
     free(bottom_uns);
     free(top);
 
-	return 0;
+    return 0;
 }
+
